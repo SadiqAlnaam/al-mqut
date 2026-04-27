@@ -1,8 +1,8 @@
 const CACHE_NAME = 'muqat-v9';
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json'
+  './',
+  'index.html',
+  'manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
@@ -31,7 +31,7 @@ self.addEventListener('fetch', (event) => {
       return caches.match(event.request).then((response) => {
         if (response) return response;
         if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
+          return caches.match('index.html');
         }
       });
     })

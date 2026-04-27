@@ -53,16 +53,31 @@ interface Transaction {
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [raia, setRaia] = useState<Person[]>(() => {
-    const saved = localStorage.getItem('raia');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('raia');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error('Error loading raia:', e);
+      return [];
+    }
   });
   const [muqawatah, setMuqawatah] = useState<Person[]>(() => {
-    const saved = localStorage.getItem('muqawatah');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('muqawatah');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error('Error loading muqawatah:', e);
+      return [];
+    }
   });
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem('transactions');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('transactions');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error('Error loading transactions:', e);
+      return [];
+    }
   });
   
   // One-time data reset logic
@@ -95,12 +110,20 @@ export default function App() {
   const [selectedDetailDate, setSelectedDetailDate] = useState<string | null>(null);
   const [reportType, setReportType] = useState<'daily' | 'full'>('daily');
   const [profile, setProfile] = useState(() => {
-    const saved = localStorage.getItem('muqawit_profile');
-    return saved ? JSON.parse(saved) : {
+    const defaultProfile = {
       name: 'صادق النعم',
       location: 'صنعاء، اليمن',
       phone: '777437409'
     };
+    try {
+      const saved = localStorage.getItem('muqawit_profile');
+      if (!saved || saved === 'undefined' || saved === 'null') return defaultProfile;
+      const parsed = JSON.parse(saved);
+      return { ...defaultProfile, ...parsed };
+    } catch (e) {
+      console.error('Error loading profile:', e);
+      return defaultProfile;
+    }
   });
 
   useEffect(() => {
@@ -1763,8 +1786,8 @@ export default function App() {
                <div className="report-section">
                 <div className="flex justify-between items-start mb-8 pb-4 border-b-2" style={{ borderColor: '#0f172a' }}>
                   <div className="text-right">
-                    <h3 className="text-sm font-black" style={{ color: '#0f172a' }}>{profile.name}</h3>
-                    <p className="text-[10px] font-bold" style={{ color: '#64748b' }}>{profile.location}</p>
+                    <h3 className="text-sm font-black" style={{ color: '#0f172a' }}>{profile?.name || '---'}</h3>
+                    <p className="text-[10px] font-bold" style={{ color: '#64748b' }}>{profile?.location || '---'}</p>
                   </div>
                   <div className="text-center flex-1">
                     <h1 className="text-xl font-black" style={{ color: '#0f172a' }}>
@@ -2114,8 +2137,10 @@ export default function App() {
                      {/* HEADER & STATS */}
                      <div className="flex justify-between items-start mb-8 pb-4 border-b-2" style={{ borderColor: '#0f172a' }}>
                        <div className="text-right">
-                         <h3 className="text-sm font-black" style={{ color: '#0f172a' }}>{profile.name}</h3>
-                         <p className="text-[10px] font-bold" style={{ color: '#64748b' }}>{profile.location}</p>
+                         <div className="bg-slate-900 text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider mb-1 inline-block">
+                           {profile?.name || '---'}
+                         </div>
+                         <p className="text-[10px] font-bold" style={{ color: '#64748b' }}>{profile?.location || '---'}</p>
                        </div>
                        <div className="text-center flex-1">
                          <h1 className="text-xl font-black" style={{ color: '#0f172a' }}>التقرير اليومي الشامل</h1>
