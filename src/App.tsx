@@ -1096,7 +1096,9 @@ export default function App() {
                 <header className="p-8 pb-0 shrink-0 flex justify-between items-start">
                   <div>
                     <h3 className="text-xl font-black text-slate-900 leading-tight">
-                      {isAdding === 'transaction' ? 'تسجيل عملية' : isAdding === "ra'wi" ? 'رعوي جديد' : 'مقوت جديد'}
+                      {isAdding === 'transaction' 
+                        ? (transType === 'delivery' ? 'تسجيل وارد جديد' : 'تحرير فاتورة بيع') 
+                        : isAdding === "ra'wi" ? 'رعوي جديد' : 'مقوت جديد'}
                     </h3>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">يرجى ملء البيانات بدقة</p>
                   </div>
@@ -1116,23 +1118,6 @@ export default function App() {
                   >
                   {isAdding === 'transaction' ? (
                     <>
-                      <div className="flex p-1 bg-slate-50 rounded-2xl mb-2">
-                        <button
-                          type="button"
-                          onClick={() => setTransType('sale')}
-                          className={`flex-1 py-3 text-[11px] font-black rounded-xl transition-all ${transType === 'sale' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}
-                        >
-                          تسجيل بيع
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setTransType('delivery')}
-                          className={`flex-1 py-3 text-[11px] font-black rounded-xl transition-all ${transType === 'delivery' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-400'}`}
-                        >
-                          تسجيل وارد
-                        </button>
-                      </div>
-
                       <div className="space-y-1.5 relative">
                          <ChevronDown className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" size={16} />
                          <select
