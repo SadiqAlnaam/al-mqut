@@ -52,6 +52,14 @@ interface Transaction {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab && ['dashboard', 'raia', 'muqawatah', 'intake', 'sales', 'reports'].includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, []);
+
   const [raia, setRaia] = useState<Person[]>(() => {
     try {
       const saved = localStorage.getItem('raia');
@@ -109,11 +117,12 @@ export default function App() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [selectedDetailDate, setSelectedDetailDate] = useState<string | null>(null);
   const [reportType, setReportType] = useState<'daily' | 'full'>('daily');
+  const [dashboardDate, setDashboardDate] = useState(new Date().toISOString().split('T')[0]);
   const [profile, setProfile] = useState(() => {
     const defaultProfile = {
-      name: 'صادق النعم',
-      location: 'صنعاء، اليمن',
-      phone: '777437409'
+      name: '',
+      location: '',
+      phone: ''
     };
     try {
       const saved = localStorage.getItem('muqawit_profile');
@@ -450,6 +459,11 @@ export default function App() {
 
   const totalCashSales = transactions.filter(t => isToday(t.date) && t.type === 'sale' && t.paymentType === 'cash').reduce((sum, t) => sum + t.amount, 0);
   const totalCreditSales = transactions.filter(t => isToday(t.date) && t.type === 'sale' && t.paymentType === 'credit').reduce((sum, t) => sum + t.amount, 0);
+  
+  const dashboardSalesTotal = transactions
+    .filter(t => isSpecificDate(t.date, dashboardDate) && t.type === 'sale')
+    .reduce((sum, t) => sum + t.amount, 0);
+
   const totalDeliveries = transactions.filter(t => isToday(t.date) && t.type === 'delivery').reduce((sum, t) => sum + (t.quantity || 0), 0);
   
   const todayDeliveries = transactions.filter(t => isToday(t.date) && t.type === 'delivery');
@@ -548,116 +562,48 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Transactions Summary Grid */}
-              <div className="grid grid-cols-2 gap-4">
-                <div 
-                  onClick={() => setActiveTab('transactions')}
-                  className="bg-white border border-slate-100 p-5 rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] group active:scale-95 transition-all cursor-pointer"
-                >
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="h-10 w-10 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
+              {/* Transactions Summary Grid - Simple & Modern */}
+              <div className="bg-slate-950 text-white p-7 rounded-[40px] shadow-2xl relative overflow-hidden">
+                <div className="absolute right-0 top-0 w-32 h-32 bg-emerald-500/10 blur-3xl rounded-full translate-x-10 -translate-y-10"></div>
+                <div className="relative z-10 space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">إجمالي المبيعات</h3>
+                      <div className="flex items-center gap-2">
+                        <Calendar size={14} className="text-emerald-500" />
+                        <input 
+                          type="date"
+                          value={dashboardDate}
+                          onChange={(e) => setDashboardDate(e.target.value)}
+                          className="bg-transparent border-none text-[10px] font-bold text-slate-300 outline-none p-0 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                    <div className="h-10 w-10 bg-white/10 rounded-2xl flex items-center justify-center text-emerald-400">
                       <Wallet size={20} />
                     </div>
-                    <span className="text-[10px] font-black text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full">نشط</span>
                   </div>
-                  <div className="text-2xl font-black font-mono tracking-tighter text-slate-900 leading-tight">
-                    {(totalCashSales + totalCreditSales).toLocaleString()} <span className="text-[10px] font-bold">ريال</span>
-                  </div>
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">إجمالي المبيعات</div>
-                </div>
 
-                <div 
-                  onClick={() => setActiveTab('transactions')}
-                  className="bg-white border border-slate-100 p-5 rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] group active:scale-95 transition-all cursor-pointer"
-                >
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="h-10 w-10 bg-orange-50 text-orange-600 rounded-2xl flex items-center justify-center">
-                      <Leaf size={20} />
-                    </div>
+                  <div className="text-4xl font-black font-mono tracking-tighter text-white">
+                    {dashboardSalesTotal.toLocaleString()} <span className="text-xs font-bold text-slate-500">ريال</span>
                   </div>
-                  <div className="text-2xl font-black font-mono tracking-tighter text-slate-900 leading-tight">
-                    {totalDeliveries.toLocaleString()}
-                  </div>
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 mb-2">إجمالي الوارد (حبة)</div>
-                  
-                  {categoryStats.length > 0 && (
-                    <div className="flex flex-wrap gap-2 pt-3 border-t border-slate-50">
-                      {categoryStats.map((stat, i) => (
-                        <div key={i} className="bg-slate-50 px-2 py-1 rounded-lg flex items-center gap-1">
-                          <span className="text-[9px] font-bold text-slate-500">{stat.category}:</span>
-                          <span className="text-[11px] font-black text-slate-900">{stat.quantity.toLocaleString()}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
 
-              {/* Financial Status Card */}
-              <div className="bg-slate-950 text-white p-7 rounded-[40px] shadow-2xl relative overflow-hidden text-center">
-                <div className="absolute right-0 top-0 w-32 h-32 bg-emerald-500/10 blur-3xl rounded-full translate-x-10 -translate-y-10"></div>
-                <div className="relative z-10 flex flex-col gap-6">
-                  <div className="flex flex-col items-center gap-3">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">إحصائيات اليوم</h3>
-                    <p className="text-sm font-medium text-slate-300">مقسمة حسب نوع الدفع</p>
-                  </div>
-                  
                   <div className="grid grid-cols-2 gap-4 border-t border-white/5 pt-6">
                     <div>
-                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">نقدي</div>
-                      <div className="text-xl font-black font-mono text-emerald-400 leading-none">{totalCashSales.toLocaleString()} <span className="text-[10px] opacity-60">ريال</span></div>
+                      <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">نقدي</div>
+                      <div className="text-lg font-black font-mono text-emerald-400">
+                        {transactions.filter(t => isSpecificDate(t.date, dashboardDate) && t.type === 'sale' && t.paymentType === 'cash').reduce((sum, t) => sum + t.amount, 0).toLocaleString()}
+                      </div>
                     </div>
                     <div>
-                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">آجل</div>
-                      <div className="text-xl font-black font-mono text-orange-400 leading-none">{totalCreditSales.toLocaleString()} <span className="text-[10px] opacity-60">ريال</span></div>
+                      <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">آجل</div>
+                      <div className="text-lg font-black font-mono text-orange-400">
+                        {transactions.filter(t => isSpecificDate(t.date, dashboardDate) && t.type === 'sale' && t.paymentType === 'credit').reduce((sum, t) => sum + t.amount, 0).toLocaleString()}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-
-              {/* Clean PWA Install Button */}
-              {!isStandalone && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-slate-900 p-6 rounded-[32px] text-white shadow-xl flex flex-col gap-4 mb-6"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 bg-white/10 text-emerald-400 rounded-2xl flex items-center justify-center">
-                      <Download size={24} />
-                    </div>
-                    <div>
-                      <h4 className="font-black text-sm text-white">تثبيت النظام كبرنامج</h4>
-                      <p className="text-[10px] font-bold text-slate-400">حوّل الموقع إلى تطبيق مستقل وبدون متصفح</p>
-                    </div>
-                  </div>
-                  
-                  {isInIframe ? (
-                    <a 
-                      href={window.location.href} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl text-sm font-black shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
-                    >
-                      فتح في نافذة مستقلة للتثبيت
-                    </a>
-                  ) : (
-                    <button 
-                      onClick={handleInstallClick}
-                      className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-4 rounded-2xl text-sm font-black shadow-lg shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
-                    >
-                      <Download size={18} />
-                      تثبيت التطبيق الآن
-                    </button>
-                  )}
-                  
-                  {isInIframe && (
-                    <p className="text-[9px] text-slate-500 text-center font-bold">
-                      * التثبيت لا يعمل داخل "نافذة المعاينة"، يجب فتحه في صفحة مستقلة أولاً.
-                    </p>
-                  )}
-                </motion.div>
-              )}
             </motion.div>
           )}
 
@@ -852,39 +798,111 @@ export default function App() {
             </motion.div>
           )}
 
-          {activeTab === 'transactions' && (
+          {activeTab === 'intake' && (
             <motion.div
-              key="transactions"
+              key="intake"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               className="space-y-4"
             >
               <div className="flex justify-between items-end mb-2">
-                <h2 className="text-xl font-black text-slate-900">سجل العمليات</h2>
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{transactions.length} عملية</div>
+                <h2 className="text-xl font-black text-slate-900">الوردات</h2>
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{transactions.filter(t => t.type === 'delivery').length} توريد</div>
               </div>
               
-              {transactions.length === 0 ? (
-                <div className="py-20 text-center flex flex-col items-center">
-                  <div className="h-20 w-20 bg-slate-50 rounded-[40px] flex items-center justify-center mb-4">
-                    <Wallet size={32} className="text-slate-200" />
-                  </div>
-                  <h3 className="text-slate-400 font-bold text-sm">السجل فارغ تماماً</h3>
-                  <p className="text-[10px] text-slate-300 font-medium mt-1">ابدأ بإضافة عملية بيع أو توريد</p>
+              <div 
+                onClick={() => {
+                  setIsAdding('transaction');
+                  setTransType('delivery');
+                }}
+                className="bg-orange-500 text-white p-6 rounded-[32px] shadow-xl shadow-orange-500/20 active:scale-95 transition-all flex items-center justify-between cursor-pointer mb-6"
+              >
+                <div>
+                  <h3 className="font-black text-lg">إضافة وارد جديد</h3>
+                  <p className="text-orange-100 text-[10px] font-bold">تسجيل حمولة قات جديدة من الرعاة</p>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  {transactions.map(t => {
-                    const person = [...raia, ...muqawatah].find(p => p.id === t.personId);
+                <div className="h-12 w-12 bg-white/20 rounded-2xl flex items-center justify-center">
+                  <Plus size={24} />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">آخر الواردات</h3>
+                {transactions.filter(t => t.type === 'delivery').length === 0 ? (
+                  <div className="py-10 text-center text-slate-300 font-bold text-xs uppercase tracking-widest bg-white rounded-[32px] border border-dashed border-slate-200">لا يوجد وارد مسجل</div>
+                ) : (
+                  transactions.filter(t => t.type === 'delivery').map(t => {
+                    const person = raia.find(p => p.id === t.personId);
                     return (
                       <div key={t.id} className="bg-white border border-slate-100 p-4 rounded-[28px] shadow-sm flex items-center justify-between group">
-                        <div className="flex gap-4 items-center line-clamp-1">
-                          <div className={`h-12 w-12 rounded-2xl flex flex-col items-center justify-center font-black text-[10px] shrink-0 ${t.type === 'sale' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>
-                            {t.type === 'sale' ? 'بيع' : 'وارد'}
+                        <div className="flex gap-4 items-center">
+                          <div className="h-12 w-12 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center font-black text-xs">
+                            وارد
                           </div>
-                          <div className="overflow-hidden">
-                            <h4 className="font-bold text-sm text-slate-900 truncate">{person?.name || 'مجهول'}</h4>
+                          <div>
+                            <h4 className="font-bold text-sm text-slate-900">{person?.name || 'مجهول'}</h4>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[10px] font-black text-slate-400 font-mono">{new Date(t.date).toLocaleDateString('ar-YE')}</span>
+                              <span className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 font-bold">{t.category}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-lg font-black font-mono text-slate-900 tracking-tighter">
+                          {t.quantity} <span className="text-[10px] text-slate-400 font-bold">حبة</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'sales' && (
+            <motion.div
+              key="sales"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-4"
+            >
+              <div className="flex justify-between items-end mb-2">
+                <h2 className="text-xl font-black text-slate-900">المبيعات</h2>
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{transactions.filter(t => t.type === 'sale').length} عملية بيع</div>
+              </div>
+
+              <div 
+                onClick={() => {
+                  setIsAdding('transaction');
+                  setTransType('sale');
+                }}
+                className="bg-emerald-600 text-white p-6 rounded-[32px] shadow-xl shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-between cursor-pointer mb-6"
+              >
+                <div>
+                  <h3 className="font-black text-lg">تحرير فاتورة بيع</h3>
+                  <p className="text-emerald-100 text-[10px] font-bold">تسجيل عملية بيع نقدية أو آجلة للمقواتة</p>
+                </div>
+                <div className="h-12 w-12 bg-white/20 rounded-2xl flex items-center justify-center">
+                  <Plus size={24} />
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">آخر المبيعات</h3>
+                {transactions.filter(t => t.type === 'sale').length === 0 ? (
+                  <div className="py-10 text-center text-slate-300 font-bold text-xs uppercase tracking-widest bg-white rounded-[32px] border border-dashed border-slate-200">لا توجد مبيعات مسجلة</div>
+                ) : (
+                  transactions.filter(t => t.type === 'sale').map(t => {
+                    const person = muqawatah.find(p => p.id === t.personId);
+                    return (
+                      <div key={t.id} className="bg-white border border-slate-100 p-4 rounded-[28px] shadow-sm flex items-center justify-between group">
+                        <div className="flex gap-4 items-center">
+                          <div className="h-12 w-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black text-xs">
+                            بيع
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-sm text-slate-900">{person?.name || 'مجهول'}</h4>
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md ${t.paymentType === 'cash' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>
                                 {t.paymentType === 'cash' ? 'نقدي' : 'آجل'}
@@ -893,17 +911,14 @@ export default function App() {
                             </div>
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-1">
-                          <div className="text-lg font-black font-mono leading-none text-slate-900 tracking-tighter">
-                            {t.type === 'sale' ? t.amount.toLocaleString() : t.quantity}
-                            <span className="text-[8px] ms-1 text-slate-400">{t.type === 'sale' ? 'ريال' : 'حبة'}</span>
-                          </div>
+                        <div className="text-lg font-black font-mono text-slate-900 tracking-tighter">
+                          {t.amount.toLocaleString()} <span className="text-[10px] text-slate-400 font-bold">ريال</span>
                         </div>
                       </div>
-                    )
-                  })}
-                </div>
-              )}
+                    );
+                  })
+                )}
+              </div>
             </motion.div>
           )}
 
@@ -1010,7 +1025,10 @@ export default function App() {
             animate={{ scale: 1, rotate: 0 }}
             exit={{ scale: 0, rotate: 45 }}
             onClick={() => {
-              if (activeTab === 'transactions') {
+              if (activeTab === 'intake') {
+                setIsAdding('transaction');
+                setTransType('delivery');
+              } else if (activeTab === 'sales') {
                 setIsAdding('transaction');
                 setTransType('sale');
               } else {
@@ -1019,7 +1037,7 @@ export default function App() {
             }}
             className="fixed bottom-28 left-6 h-16 w-16 bg-slate-950 text-white rounded-[24px] shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-30"
           >
-            {activeTab === 'transactions' ? <Plus size={28} /> : <UserPlus size={28} />}
+            {(activeTab === 'sales' || activeTab === 'intake') ? <Plus size={28} /> : <UserPlus size={28} />}
           </motion.button>
         )}
       </AnimatePresence>
@@ -1030,8 +1048,9 @@ export default function App() {
           { id: 'dashboard', icon: LayoutDashboard, label: 'الرئيسية' },
           { id: 'raia', icon: Users, label: 'الرعويين' },
           { id: 'muqawatah', icon: ShoppingBag, label: 'المقواتة' },
+          { id: 'intake', icon: Sprout, label: 'الوردات' },
+          { id: 'sales', icon: Wallet, label: 'المبيعات' },
           { id: 'reports', icon: FileText, label: 'التقارير' },
-          { id: 'transactions', icon: Wallet, label: 'السجل' },
         ].map((tab) => (
           <button 
             key={tab.id}
@@ -1786,8 +1805,8 @@ export default function App() {
                <div className="report-section">
                 <div className="flex justify-between items-start mb-8 pb-4 border-b-2" style={{ borderColor: '#0f172a' }}>
                   <div className="text-right">
-                    <h3 className="text-sm font-black" style={{ color: '#0f172a' }}>{profile?.name || '---'}</h3>
-                    <p className="text-[10px] font-bold" style={{ color: '#64748b' }}>{profile?.location || '---'}</p>
+                    {profile.name && <h3 className="text-sm font-black" style={{ color: '#0f172a' }}>{profile.name}</h3>}
+                    {profile.location && <p className="text-[10px] font-bold" style={{ color: '#64748b' }}>{profile.location}</p>}
                   </div>
                   <div className="text-center flex-1">
                     <h1 className="text-xl font-black" style={{ color: '#0f172a' }}>
@@ -2138,9 +2157,9 @@ export default function App() {
                      <div className="flex justify-between items-start mb-8 pb-4 border-b-2" style={{ borderColor: '#0f172a' }}>
                        <div className="text-right">
                          <div className="bg-slate-900 text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider mb-1 inline-block">
-                           {profile?.name || '---'}
+                           {profile.name}
                          </div>
-                         <p className="text-[10px] font-bold" style={{ color: '#64748b' }}>{profile?.location || '---'}</p>
+                         <p className="text-[10px] font-bold" style={{ color: '#64748b' }}>{profile.location}</p>
                        </div>
                        <div className="text-center flex-1">
                          <h1 className="text-xl font-black" style={{ color: '#0f172a' }}>التقرير اليومي الشامل</h1>
