@@ -48,6 +48,8 @@ interface Transaction {
   unitPrice?: number;
   category?: string;
   refDeliveryId?: string; // Links a sale to a specific delivery
+  commission?: number;
+  isMoulai?: boolean;
 }
 
 export default function App() {
@@ -202,7 +204,7 @@ export default function App() {
         filename: safeFilename,
         image: { type: 'jpeg' as const, quality: 0.95 }, 
         html2canvas: { 
-          scale: 2, 
+          scale: 1.5, 
           useCORS: true, 
           logging: false,
           backgroundColor: '#ffffff',
@@ -227,13 +229,13 @@ export default function App() {
       clearTimeout(safetyTimer);
 
       if (!blob || blob.size < 500) {
-        throw new Error('PDF Generation produced empty file');
+        throw new Error('فشل في إنشاء الملف: الملف الناتج فارغ أو غير صالح.');
       }
 
       const file = new File([blob], safeFilename, { type: 'application/pdf' });
       
       // Native Share API (Primary for PWA on Phones)
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
         try {
           await navigator.share({
             files: [file],
@@ -248,7 +250,7 @@ export default function App() {
           setShowSuccessModal({ show: true, filename: safeFilename });
           return;
         } catch (shareErr) {
-          console.log('Share canceled or failing', shareErr);
+          console.log('Share canceled or failing, trying fallback download', shareErr);
         }
       }
 
@@ -271,15 +273,15 @@ export default function App() {
         setShowSuccessModal({ show: true, filename: safeFilename });
       }, 1000);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('CRITICAL PDF ERROR:', error);
       clearTimeout(safetyTimer);
       setIsGeneratingPDF(false);
+      alert(`⚠️ حدث خطأ أثناء إنشاء التقرير: ${error.message || 'خطأ غير معروف'}`);
       if (isPrintingSilent) {
         setSelectedPerson(null);
         setIsPrintingSilent(false);
       }
-      alert('⚠️ فشل إنشاء التقرير. يرجى استخدام متصفح Chrome أو تقليل كمية البيانات المختارة.');
     }
   };
 
@@ -391,7 +393,9 @@ export default function App() {
 
     const qty = parseFloat(transQuantity) || 0;
     const price = parseFloat(transUnitPrice) || 0;
-    const total = transType === 'sale' ? (qty * price) : 0;
+    const grossTotal = transType === 'sale' ? (qty * price) : 0;
+    const commission = transType === 'sale' ? Math.round(grossTotal * 0.1) : 0;
+    const netTotal = grossTotal - commission;
 
     if (transType === 'sale' && transDeliveryRef) {
       const stock = getRemainingStock(transDeliveryRef);
@@ -401,17 +405,20 @@ export default function App() {
       }
     }
 
+    const isMoulai = transPerson === 'moulai';
     const newTrans: Transaction = {
       id: Date.now().toString(),
       date: new Date().toISOString(),
       personId: transPerson,
-      amount: total,
+      amount: grossTotal,
       unitPrice: price,
       type: transType,
       paymentType: transPayment,
       quantity: qty,
       category: transCategory,
       refDeliveryId: transDeliveryRef,
+      commission: commission,
+      isMoulai: isMoulai,
       note: ''
     };
 
@@ -602,6 +609,22 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+                  
+                  <div className="grid grid-cols-2 gap-4 border-t border-white/5 pt-4">
+                    <div>
+                      <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">إجمالي العمولات</div>
+                      <div className="text-lg font-black font-mono text-pink-400">
+                        {transactions.filter(t => isSpecificDate(t.date, dashboardDate) && t.type === 'sale').reduce((sum, t) => sum + (t.commission || 0), 0).toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">صافي الرعوي</div>
+                      <div className="text-lg font-black font-mono text-blue-400">
+                        {(transactions.filter(t => isSpecificDate(t.date, dashboardDate) && t.type === 'sale').reduce((sum, t) => sum + t.amount, 0) - 
+                          transactions.filter(t => isSpecificDate(t.date, dashboardDate) && t.type === 'sale').reduce((sum, t) => sum + (t.commission || 0), 0)).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -695,8 +718,17 @@ export default function App() {
                         disabled={isGeneratingPDF || !raiaReportId}
                         className="w-full bg-slate-900 text-white py-3 rounded-xl font-black text-[10px] shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-30"
                       >
-                        <FileText size={14} />
-                        تنزيل التقرير الشامل
+                        {isGeneratingPDF ? (
+                          <>
+                            <div className="h-3 w-3 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                            جاري تجميع البيانات...
+                          </>
+                        ) : (
+                          <>
+                            <FileText size={14} />
+                            تنزيل التقرير الشامل
+                          </>
+                        )}
                       </button>
                     </div>
 
@@ -723,8 +755,17 @@ export default function App() {
                           disabled={isGeneratingPDF || !raiaReportId}
                           className="w-full bg-orange-500 text-white py-3 rounded-xl font-black text-[10px] shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-30"
                         >
-                          <Download size={14} />
-                          تنزيل تقرير اليوم المحدد
+                          {isGeneratingPDF ? (
+                            <>
+                              <div className="h-3 w-3 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                              جاري تجميع البيانات...
+                            </>
+                          ) : (
+                            <>
+                              <Download size={14} />
+                              تنزيل تقرير اليوم المحدد
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>
@@ -760,8 +801,17 @@ export default function App() {
                         disabled={isGeneratingPDF || !muqawitReportId}
                         className="w-full bg-slate-900 text-white py-3 rounded-xl font-black text-[10px] shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-30"
                       >
-                        <FileText size={14} />
-                        تنزيل التقرير الشامل
+                        {isGeneratingPDF ? (
+                          <>
+                            <div className="h-3 w-3 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                            جاري تجميع البيانات...
+                          </>
+                        ) : (
+                          <>
+                            <FileText size={14} />
+                            تنزيل التقرير الشامل
+                          </>
+                        )}
                       </button>
                     </div>
 
@@ -788,8 +838,17 @@ export default function App() {
                           disabled={isGeneratingPDF || !muqawitReportId}
                           className="w-full bg-emerald-600 text-white py-3 rounded-xl font-black text-[10px] shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-30"
                         >
-                          <Download size={14} />
-                          تنزيل تقرير اليوم المحدد
+                          {isGeneratingPDF ? (
+                            <>
+                              <div className="h-3 w-3 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                              جاري تجميع البيانات...
+                            </>
+                          ) : (
+                            <>
+                              <Download size={14} />
+                              تنزيل تقرير اليوم المحدد
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>
@@ -1130,6 +1189,9 @@ export default function App() {
                             {(transType === 'sale' ? muqawatah : raia).map(p => (
                               <option key={p.id} value={p.id}>{p.name}</option>
                             ))}
+                            {transType === 'sale' && (
+                              <option value="moulai" className="font-black text-orange-600 italic">مـولـعـي (بيع مباشر)</option>
+                            )}
                           </select>
                       </div>
 
@@ -1171,7 +1233,7 @@ export default function App() {
                                   className="w-full bg-slate-50 border-none rounded-2xl pl-10 pr-5 py-5 font-bold text-slate-700 outline-none focus:ring-4 focus:ring-emerald-50 transition-all appearance-none text-center text-sm"
                                 >
                                   <option value="">-- اختر من المـخـزون --</option>
-                                  {transactions.filter(t => t.type === 'delivery' && isToday(t.date) && getRemainingStock(t.id) > 0).map(t => {
+                                  {transactions.filter(t => t.type === 'delivery' && getRemainingStock(t.id) > 0).map(t => {
                                     const rawi = raia.find(r => r.id === t.personId);
                                     return (
                                       <option key={t.id} value={t.id}>
@@ -1332,7 +1394,9 @@ export default function App() {
                         const dayTrans = pTrans.filter(t => t.date.startsWith(date));
                         if (selectedPerson.type === "ra'wi") {
                           const deliveryQty = dayTrans.filter(t => t.type === 'delivery').reduce((sum, t) => sum + (t.quantity || 0), 0);
-                          const salesVal = dayTrans.filter(t => t.type === 'sale').reduce((sum, t) => sum + t.amount, 0);
+                          const grossSalesVal = dayTrans.filter(t => t.type === 'sale').reduce((sum, t) => sum + t.amount, 0);
+                          const dayCommission = dayTrans.filter(t => t.type === 'sale').reduce((sum, t) => sum + (t.commission || 0), 0);
+                          const netSalesVal = grossSalesVal - dayCommission;
                           return (
                             <motion.div 
                               key={date}
@@ -1343,11 +1407,11 @@ export default function App() {
                             >
                               <div>
                                 <h4 className="text-sm font-black text-slate-900 mb-1">{date}</h4>
-                                <p className="text-[10px] font-bold text-slate-400">توريد: {deliveryQty} حبة</p>
+                                <p className="text-[10px] font-bold text-slate-400">توريد: {deliveryQty} حبة | عمولة: {dayCommission.toLocaleString()}</p>
                               </div>
                               <div className="text-right">
-                                <div className="text-emerald-600 font-black font-mono text-sm">{salesVal.toLocaleString()} ريال</div>
-                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">إجمالي المبيعات</p>
+                                <div className="text-emerald-600 font-black font-mono text-sm">{netSalesVal.toLocaleString()} ريال</div>
+                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">صافي الرعوي</p>
                               </div>
                             </motion.div>
                           );
@@ -1430,13 +1494,18 @@ export default function App() {
                         </div>
                       </div>
                       <div>
-                        <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">إجمالي المبيعات اليوم</div>
+                        <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">صافي الرعوي اليوم</div>
                         <div className="text-2xl font-black font-mono text-emerald-400">
-                          {transactions.filter(t => {
-                            if (t.type !== 'sale' || !t.date.startsWith(selectedDetailDate!)) return false;
-                            const delivery = transactions.find(d => d.id === t.refDeliveryId);
-                            return delivery?.personId === selectedPerson.id;
-                          }).reduce((sum, t) => sum + t.amount, 0).toLocaleString()} <span className="text-sm font-bold opacity-60">ريال</span>
+                          {(() => {
+                            const dailySales = transactions.filter(t => {
+                              if (t.type !== 'sale' || !t.date.startsWith(selectedDetailDate!)) return false;
+                              const delivery = transactions.find(d => d.id === t.refDeliveryId);
+                              return delivery?.personId === selectedPerson.id;
+                            });
+                            const gross = dailySales.reduce((sum, t) => sum + t.amount, 0);
+                            const comm = dailySales.reduce((sum, t) => sum + (t.commission || 0), 0);
+                            return (gross - comm).toLocaleString();
+                          })()} <span className="text-sm font-bold opacity-60">ريال</span>
                         </div>
                       </div>
                     </div>
@@ -1476,8 +1545,9 @@ export default function App() {
                                       <span className="text-[11px] font-bold text-slate-700">{muqawit?.name}</span>
                                     </div>
                                     <div className="text-right flex flex-col">
-                                      <span className="text-[8px] font-black text-slate-400 uppercase">السجل</span>
-                                      <span className="text-[11px] font-black font-mono text-emerald-600">{s.amount.toLocaleString()} ريال ({s.quantity} حبة)</span>
+                                      <span className="text-[8px] font-black text-slate-400 uppercase">السجل (الصافي)</span>
+                                      <span className="text-[11px] font-black font-mono text-emerald-600">{(s.amount - (s.commission || 0)).toLocaleString()} ريال ({s.quantity} حبة)</span>
+                                      <span className="text-[8px] text-slate-400">الإجمالي: {s.amount.toLocaleString()} | عمولة: {(s.commission || 0).toLocaleString()}</span>
                                     </div>
                                   </div>
                                 );
@@ -1770,8 +1840,8 @@ export default function App() {
 
       {/* Hidden PDF Templates Area - Robustly placed far off-screen to avoid any interference while remaining in DOM */}
       <div 
-        className="absolute top-0 left-[-10000px] pointer-events-none"
-        style={{ width: '210mm', opacity: 1, visibility: 'visible' }}
+        className="fixed top-0 left-[-10000px] pointer-events-none"
+        style={{ width: '210mm', opacity: 1, visibility: 'visible', zIndex: -1000 }}
       >
         <div 
           ref={reportRef} 
@@ -1788,7 +1858,7 @@ export default function App() {
             /* Individual Report Template */
             <div className="report-doc">
                <div className="report-section">
-                <div className="flex justify-between items-start mb-8 pb-4 border-b-2" style={{ borderColor: '#0f172a' }}>
+                <div className="flex justify-between items-start mb-4 pb-2 border-b-2" style={{ borderColor: '#0f172a' }}>
                   <div className="text-right">
                     {profile.name && <h3 className="text-sm font-black" style={{ color: '#0f172a' }}>{profile.name}</h3>}
                     {profile.location && <p className="text-[10px] font-bold" style={{ color: '#64748b' }}>{profile.location}</p>}
@@ -1803,7 +1873,7 @@ export default function App() {
                   </div>
                   <div className="text-left">
                     <h2 className="text-lg font-black" style={{ color: '#0f172a' }}>{selectedPerson.name}</h2>
-                    <p className="text-[10px] font-bold uppercase" style={{ color: '#94a3b8' }}>{selectedPerson.type === "ra'wi" ? 'رعوي' : 'مقوت'}</p>
+                    <p className="text-[10px] font-bold" style={{ color: '#94a3b8' }}>{selectedPerson.type === "ra'wi" ? 'رعوي' : 'مقوت'}</p>
                   </div>
                 </div>
 
@@ -1817,16 +1887,16 @@ export default function App() {
                       const roosQty = personDeliveries.filter(t => (t.category || '').includes('روس')).reduce((sum, t) => sum + (t.quantity || 0), 0);
                       const qatalQty = personDeliveries.filter(t => (t.category || '').includes('قطل')).reduce((sum, t) => sum + (t.quantity || 0), 0);
                       return (
-                        <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="grid grid-cols-2 gap-2 mb-2">
                           {roosQty > 0 && (
-                            <div className="p-4 rounded-xl text-center bg-slate-900 text-white">
-                              <div className="text-[10px] font-bold mb-1 opacity-60 uppercase">إجمالي الروس</div>
+                            <div className="p-4 rounded-xl text-center" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
+                              <div className="text-[10px] font-bold mb-1 uppercase" style={{ color: '#ffffff', opacity: 0.6 }}>إجمالي الروس</div>
                               <div className="text-xl font-black">{roosQty} رأس</div>
                             </div>
                           )}
                           {qatalQty > 0 && (
-                            <div className="p-4 rounded-xl text-center bg-slate-900 text-white">
-                              <div className="text-[10px] font-bold mb-1 opacity-60 uppercase">إجمالي القطل</div>
+                            <div className="p-4 rounded-xl text-center" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
+                              <div className="text-[10px] font-bold mb-1 uppercase" style={{ color: '#ffffff', opacity: 0.6 }}>إجمالي القطل</div>
                               <div className="text-xl font-black">{qatalQty} قطلة</div>
                             </div>
                           )}
@@ -1834,7 +1904,7 @@ export default function App() {
                       );
                     })()}
 
-                    <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="grid grid-cols-2 gap-2 mb-2">
                       <div className="p-4 rounded-xl" style={{ backgroundColor: '#eff6ff', border: '1px solid #dbeafe' }}>
                         <div className="text-xs font-bold mb-1" style={{ color: '#1e40af' }}>إجمالي توريدات الفترة</div>
                         <div className="text-xl font-black" style={{ color: '#1e3a8a' }}>
@@ -1845,22 +1915,33 @@ export default function App() {
                         </div>
                       </div>
                       <div className="p-4 rounded-xl" style={{ backgroundColor: '#ecfdf5', border: '1px solid #d1fae5' }}>
-                        <div className="text-xs font-bold mb-1" style={{ color: '#059669' }}>إجمالي المبيعات المحققة</div>
+                        <div className="text-xs font-bold mb-1" style={{ color: '#059669' }}>إجمالي المبيعات (الصافي)</div>
                         <div className="text-xl font-black" style={{ color: '#047857' }}>
-                          {transactions.filter(t => {
+                          {(() => {
+                            const personSales = transactions.filter(t => {
+                              if (t.type !== 'sale') return false;
+                              if (reportType !== 'full' && !isSpecificDate(t.date, reportDate)) return false;
+                              const delivery = transactions.find(d => d.id === t.refDeliveryId);
+                              return delivery?.personId === selectedPerson.id;
+                            });
+                            const gross = personSales.reduce((sum, t) => sum + t.amount, 0);
+                            const comm = personSales.reduce((sum, t) => sum + (t.commission || 0), 0);
+                            return (gross - comm).toLocaleString();
+                          })()} ريال
+                        </div>
+                        <div className="text-[9px] font-bold mt-1" style={{ color: '#059669' }}>الإجمالي العام: {transactions.filter(t => {
                             if (t.type !== 'sale') return false;
                             if (reportType !== 'full' && !isSpecificDate(t.date, reportDate)) return false;
                             const delivery = transactions.find(d => d.id === t.refDeliveryId);
                             return delivery?.personId === selectedPerson.id;
-                          }).reduce((sum, t) => sum + t.amount, 0).toLocaleString()} ريال
-                        </div>
+                          }).reduce((sum, t) => sum + t.amount, 0).toLocaleString()}</div>
                       </div>
                     </div>
 
                     <div className="flex gap-2 mb-8 flex-wrap">
-                      <div className="bg-slate-100 px-3 py-1.5 rounded-lg flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-slate-500">الإجمالي:</span>
-                        <span className="text-xs font-black text-slate-900">
+                      <div className="bg-slate-100 px-3 py-1.5 rounded-lg flex items-center gap-2" style={{ backgroundColor: '#f1f5f9' }}>
+                        <span className="text-[10px] font-bold" style={{ color: '#64748b' }}>الإجمالي:</span>
+                        <span className="text-xs font-black" style={{ color: '#0f172a' }}>
                           {transactions.filter(t => {
                             const isMatch = t.personId === selectedPerson.id && t.type === 'delivery';
                             return reportType === 'full' ? isMatch : (isMatch && isSpecificDate(t.date, reportDate));
@@ -1871,9 +1952,9 @@ export default function App() {
                         const isMatch = t.personId === selectedPerson.id && t.type === 'delivery';
                         return reportType === 'full' ? isMatch : (isMatch && isSpecificDate(t.date, reportDate));
                       }).map(t => t.category))).map(cat => (
-                        <div key={cat} className="bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 flex items-center gap-2">
-                          <span className="text-[10px] font-bold text-slate-500">{cat}:</span>
-                          <span className="text-xs font-black text-slate-900">
+                        <div key={cat} className="bg-slate-50 px-3 py-1.5 rounded-lg border flex items-center gap-2" style={{ backgroundColor: '#f8fafc', borderColor: '#e2e8f0' }}>
+                          <span className="text-[10px] font-bold" style={{ color: '#64748b' }}>{cat}:</span>
+                          <span className="text-xs font-black" style={{ color: '#0f172a' }}>
                             {transactions.filter(t => {
                               const isMatch = t.personId === selectedPerson.id && t.type === 'delivery' && t.category === cat;
                               return reportType === 'full' ? isMatch : (isMatch && isSpecificDate(t.date, reportDate));
@@ -1904,14 +1985,17 @@ export default function App() {
                              }, 0);
 
                              return (
-                               <div key={date} className="mb-8 last:mb-0 border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                                 <div className="bg-slate-100 p-3 flex justify-between items-center border-b border-slate-200">
+                               <div key={date} className="mb-8 last:mb-0 border rounded-xl overflow-hidden" style={{ borderColor: '#e2e8f0' }}>
+                                 <div className="bg-slate-100 p-3 flex justify-between items-center border-b" style={{ backgroundColor: '#f1f5f9', borderColor: '#e2e8f0' }}>
                                    <span className="text-[10px] font-black" style={{ color: '#0f172a' }}>
                                      سجلات يوم: {new Date(date).toLocaleDateString('ar-YE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                                    </span>
-                                   <div className="bg-emerald-600 text-white px-3 py-1 rounded-lg text-[10px] font-black">
-                                      إجمالي المبيعات المحققة لهذا اليوم: {dayTotalSales.toLocaleString()} ريال
-                                   </div>
+                                    <div className="bg-emerald-600 text-white px-3 py-1 rounded-lg text-[10px] font-black" style={{ backgroundColor: '#059669', color: '#ffffff' }}>
+                                       صافي الرعوي لهذا اليوم: {(dayTotalSales - grouped[date].reduce((acc, d) => {
+                                         const sales = transactions.filter(s => s.refDeliveryId === d.id);
+                                         return acc + sales.reduce((sSum, s) => sSum + (s.commission || 0), 0);
+                                       }, 0)).toLocaleString()} ريال
+                                    </div>
                                  </div>
                                  <table className="w-full border-collapse">
                                  <thead style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
@@ -1931,7 +2015,8 @@ export default function App() {
                                            const m = muqawatah.find(p => p.id === s.personId);
                                            return (
                                              <div key={s.id} className="text-[10px] mb-1" style={{ color: '#475569' }}>
-                                                <span className="font-black" style={{ color: '#059669' }}>{s.amount.toLocaleString()} ريال</span> - {m?.name} ({s.quantity} {d.category})
+                                                <span className="font-black" style={{ color: '#059669' }}>{(s.amount - (s.commission || 0)).toLocaleString()} ريال</span> - {s.isMoulai ? 'مبيع مـولـعي' : (m?.name || 'مجهول')} ({s.quantity} {d.category})
+                                                <span className="text-[8px] mr-1 block" style={{ opacity: 0.6 }}>(إجمالي: {s.amount.toLocaleString()} - عمولة: {s.commission?.toLocaleString()})</span>
                                              </div>
                                            )
                                          })}
@@ -1979,9 +2064,9 @@ export default function App() {
                     </div>
 
                     <div className="flex gap-2 mb-8 flex-wrap">
-                      <div className="bg-slate-100 px-3 py-1.5 rounded-lg flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-slate-500">إجمالي الكمية:</span>
-                        <span className="text-xs font-black text-slate-900">
+                      <div className="px-3 py-1.5 rounded-lg flex items-center gap-2" style={{ backgroundColor: '#f1f5f9' }}>
+                        <span className="text-[10px] font-bold" style={{ color: '#64748b' }}>إجمالي الكمية:</span>
+                        <span className="text-xs font-black" style={{ color: '#0f172a' }}>
                            {transactions.filter(t => {
                              const isMatch = t.personId === selectedPerson.id;
                              return reportType === 'full' ? isMatch : (isMatch && isSpecificDate(t.date, reportDate));
@@ -1995,9 +2080,9 @@ export default function App() {
                         const del = transactions.find(d => d.id === t.refDeliveryId);
                         return del?.category;
                       }))).filter(Boolean).map(cat => (
-                        <div key={cat} className="bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 flex items-center gap-2">
-                          <span className="text-[10px] font-bold text-slate-500">{cat}:</span>
-                          <span className="text-xs font-black text-slate-900">
+                        <div key={cat} className="px-3 py-1.5 rounded-lg border flex items-center gap-2" style={{ backgroundColor: '#f8fafc', borderColor: '#e2e8f0' }}>
+                          <span className="text-[10px] font-bold" style={{ color: '#64748b' }}>{cat}:</span>
+                          <span className="text-xs font-black" style={{ color: '#0f172a' }}>
                             {transactions.filter(t => {
                               const isMatch = t.personId === selectedPerson.id && transactions.find(d => d.id === t.refDeliveryId)?.category === cat;
                               return reportType === 'full' ? isMatch : (isMatch && isSpecificDate(t.date, reportDate));
@@ -2027,19 +2112,19 @@ export default function App() {
                                const dayTotal = dayCash + dayCredit;
 
                                return (
-                                 <div key={date} className="mb-8 last:mb-0 border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                                    <div className="bg-slate-100 p-3 flex justify-between items-center border-b border-slate-200">
+                                 <div key={date} className="mb-8 last:mb-0 border rounded-2xl overflow-hidden" style={{ borderColor: '#e2e8f0' }}>
+                                    <div className="bg-slate-100 p-3 flex justify-between items-center border-b" style={{ backgroundColor: '#f1f5f9', borderColor: '#e2e8f0' }}>
                                       <span className="text-[10px] font-black" style={{ color: '#0f172a' }}>
                                         سجلات يوم: {new Date(date).toLocaleDateString('ar-YE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                                       </span>
                                       <div className="flex gap-2">
-                                        <div className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg text-[9px] font-black border border-emerald-100">
+                                        <div className="px-3 py-1 rounded-lg text-[9px] font-black border" style={{ backgroundColor: '#ecfdf5', color: '#047857', borderColor: '#d1fae5' }}>
                                           نقدي: {dayCash.toLocaleString()}
                                         </div>
-                                        <div className="bg-orange-50 text-orange-700 px-3 py-1 rounded-lg text-[9px] font-black border border-orange-100">
+                                        <div className="px-3 py-1 rounded-lg text-[9px] font-black border" style={{ backgroundColor: '#fff7ed', color: '#c2410c', borderColor: '#fed7aa' }}>
                                           آجل: {dayCredit.toLocaleString()}
                                         </div>
-                                        <div className="bg-slate-900 text-white px-3 py-1 rounded-lg text-[9px] font-black shadow-sm">
+                                        <div className="px-3 py-1 rounded-lg text-[9px] font-black" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
                                           الإجمالي: {dayTotal.toLocaleString()} ريال
                                         </div>
                                       </div>
@@ -2091,10 +2176,11 @@ export default function App() {
                  const dailyTransactions = transactions.filter(t => isSpecificDate(t.date, reportDate));
                  const totalCashSales = dailyTransactions.filter(t => t.type === 'sale' && t.paymentType === 'cash').reduce((sum, t) => sum + t.amount, 0);
                  const totalCreditSales = dailyTransactions.filter(t => t.type === 'sale' && t.paymentType === 'credit').reduce((sum, t) => sum + t.amount, 0);
+                 const totalCommissions = dailyTransactions.filter(t => t.type === 'sale').reduce((sum, t) => sum + (t.commission || 0), 0);
                  const totalDelivQty = dailyTransactions.filter(t => t.type === 'delivery').reduce((sum, t) => sum + (t.quantity || 0), 0);
 
                  const muqawitDetails = muqawatah.map(m => {
-                   const mSales = dailyTransactions.filter(t => t.personId === m.id && t.type === 'sale');
+                   const mSales = dailyTransactions.filter(t => t.personId === m.id && t.type === 'sale' && !t.isMoulai);
                    if (mSales.length === 0) return null;
 
                    const categories = Array.from(new Set(mSales.map(t => {
@@ -2118,7 +2204,7 @@ export default function App() {
                    };
                  }).filter(Boolean);
 
-                 const raiaDetailed = raia.map(r => {
+                  const raiaDetailed = raia.map(r => {
                    const rDeliveries = dailyTransactions.filter(t => t.personId === r.id && t.type === 'delivery');
                    if (rDeliveries.length === 0) return null;
                    
@@ -2137,11 +2223,11 @@ export default function App() {
                  }).filter(Boolean);
 
                  return (
-                   <div className="report-section px-8 py-4">
+                   <div className="report-section px-8 py-1">
                      {/* HEADER & STATS */}
-                     <div className="flex justify-between items-start mb-8 pb-4 border-b-2" style={{ borderColor: '#0f172a' }}>
+                     <div className="flex justify-between items-start mb-4 pb-2 border-b-2" style={{ borderColor: '#0f172a' }}>
                        <div className="text-right">
-                         <div className="bg-slate-900 text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider mb-1 inline-block">
+                         <div className="px-3 py-1 rounded-lg text-[10px] font-black mb-1 inline-block" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
                            {profile.name}
                          </div>
                          <p className="text-[10px] font-bold" style={{ color: '#64748b' }}>{profile.location}</p>
@@ -2151,36 +2237,40 @@ export default function App() {
                          <p className="text-xs font-bold" style={{ color: '#64748b' }}>التاريخ: {new Date(reportDate).toLocaleDateString('ar-YE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
                        </div>
                        <div className="text-left">
-                         <div className="bg-slate-900 text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider">
+                         <div className="px-3 py-1 rounded-lg text-[10px] font-black" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
                            سجل عام
                          </div>
                        </div>
                      </div>
 
-                     <div className="grid grid-cols-3 gap-6 mb-8">
-                       <div className="p-6 rounded-2xl" style={{ backgroundColor: '#ecfdf5', border: '1px solid #d1fae5' }}>
-                         <div className="text-[10px] font-bold mb-1 uppercase" style={{ color: '#059669' }}>إجمالي المبيعات (نقدي)</div>
-                         <div className="text-2xl font-black font-mono" style={{ color: '#047857' }}>{totalCashSales.toLocaleString()} ريال</div>
+                     <div className="grid grid-cols-4 gap-4 mb-8">
+                       <div className="p-4 rounded-2xl" style={{ backgroundColor: '#ecfdf5', border: '1px solid #d1fae5' }}>
+                         <div className="text-[8px] font-bold mb-1" style={{ color: '#059669' }}>إجمالي المبيعات (نقدي)</div>
+                         <div className="text-lg font-black font-mono" style={{ color: '#047857' }}>{totalCashSales.toLocaleString()}</div>
                        </div>
-                       <div className="p-6 rounded-2xl" style={{ backgroundColor: '#fff7ed', border: '1px solid #fed7aa' }}>
-                         <div className="text-[10px] font-bold mb-1 uppercase" style={{ color: '#ea580c' }}>إجمالي المبيعات (آجل)</div>
-                         <div className="text-2xl font-black font-mono" style={{ color: '#c2410c' }}>{totalCreditSales.toLocaleString()} ريال</div>
+                       <div className="p-4 rounded-2xl" style={{ backgroundColor: '#fff7ed', border: '1px solid #fed7aa' }}>
+                         <div className="text-[8px] font-bold mb-1" style={{ color: '#ea580c' }}>إجمالي المبيعات (آجل)</div>
+                         <div className="text-lg font-black font-mono" style={{ color: '#c2410c' }}>{totalCreditSales.toLocaleString()}</div>
                        </div>
-                       <div className="p-6 rounded-2xl" style={{ backgroundColor: '#eff6ff', border: '1px solid #dbeafe' }}>
-                         <div className="text-[10px] font-bold mb-1 uppercase" style={{ color: '#1e40af' }}>إجمالي الوارد</div>
-                         <div className="text-2xl font-black font-mono" style={{ color: '#1e3a8a' }}>{totalDelivQty.toLocaleString()} حبة</div>
+                       <div className="p-4 rounded-2xl" style={{ backgroundColor: '#fef2f2', border: '1px solid #fee2e2' }}>
+                         <div className="text-[8px] font-bold mb-1" style={{ color: '#dc2626' }}>إجمالي العمولات (10%)</div>
+                         <div className="text-lg font-black font-mono" style={{ color: '#991b1b' }}>{totalCommissions.toLocaleString()}</div>
+                       </div>
+                       <div className="p-4 rounded-2xl" style={{ backgroundColor: '#eff6ff', border: '1px solid #dbeafe' }}>
+                         <div className="text-[8px] font-bold mb-1" style={{ color: '#1e40af' }}>إجمالي الوارد</div>
+                         <div className="text-lg font-black font-mono" style={{ color: '#1e3a8a' }}>{totalDelivQty.toLocaleString()}</div>
                        </div>
                      </div>
 
-                     <div className="flex gap-4 mb-12 flex-wrap bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                       <div className="flex flex-col gap-1 pr-4 border-l border-slate-200 last:border-0 min-w-[120px]">
-                          <span className="text-[10px] font-black text-slate-400 uppercase">إجمالي الكمية</span>
-                          <span className="text-lg font-black text-slate-900">{totalDelivQty.toLocaleString()} حبة</span>
+                     <div className="flex gap-4 mb-12 flex-wrap p-4 rounded-2xl border" style={{ backgroundColor: '#f8fafc', borderColor: '#e2e8f0' }}>
+                       <div className="flex flex-col gap-1 pr-4 border-l last:border-0 min-w-[120px]" style={{ borderColor: '#e2e8f0' }}>
+                          <span className="text-[10px] font-black" style={{ color: '#94a3b8' }}>إجمالي الكمية</span>
+                          <span className="text-lg font-black" style={{ color: '#0f172a' }}>{totalDelivQty.toLocaleString()} حبة</span>
                        </div>
                        {Array.from(new Set(dailyTransactions.filter(t => t.type === 'delivery').map(t => t.category))).map(cat => (
-                         <div key={cat} className="flex flex-col gap-1 pr-4 border-l border-slate-200 last:border-0 min-w-[120px]">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">{cat}</span>
-                            <span className="text-lg font-black text-slate-900">
+                         <div key={cat} className="flex flex-col gap-1 pr-4 border-l last:border-0 min-w-[120px]" style={{ borderColor: '#e2e8f0' }}>
+                            <span className="text-[10px] font-black" style={{ color: '#94a3b8' }}>{cat}</span>
+                            <span className="text-lg font-black" style={{ color: '#0f172a' }}>
                               {dailyTransactions.filter(t => t.type === 'delivery' && t.category === cat).reduce((sum, t) => sum + (t.quantity || 0), 0).toLocaleString()} حبة
                             </span>
                          </div>
@@ -2200,29 +2290,29 @@ export default function App() {
                                     <div className="flex gap-4 items-center">
                                        <div className="flex gap-2">
                                          {m.categorySummary?.map((cat: any) => (
-                                           <div key={cat.name} className="bg-slate-100 px-2 py-1 rounded text-[10px] font-black text-slate-700">
+                                           <div key={cat.name} className="px-2 py-1 rounded text-[10px] font-black" style={{ backgroundColor: '#f1f5f9', color: '#334155' }}>
                                               {cat.name}: {cat.qty}
                                            </div>
                                          ))}
                                        </div>
-                                       <span className="text-[10px] font-bold text-slate-400">إجمالي: {m.totalQty}</span>
+                                       <span className="text-[10px] font-bold" style={{ color: '#94a3b8' }}>إجمالي: {m.totalQty}</span>
                                     </div>
                                   </div>
                                   
-                                  <div className="flex items-center gap-6 bg-slate-50 border border-slate-100 p-3 rounded-xl">
+                                  <div className="flex items-center gap-6 border p-3 rounded-xl" style={{ backgroundColor: '#f8fafc', borderColor: '#f1f5f9' }}>
                                     <div className="text-right">
-                                      <div className="text-[8px] font-bold text-emerald-500 uppercase">نقدي</div>
-                                      <div className="text-sm font-black font-mono text-emerald-700">{m.cash?.toLocaleString()} ريال</div>
+                                      <div className="text-[8px] font-bold uppercase" style={{ color: '#10b981' }}>نقدي</div>
+                                      <div className="text-sm font-black font-mono" style={{ color: '#047857' }}>{m.cash?.toLocaleString()} ريال</div>
                                     </div>
-                                    <div className="h-8 w-[1px] bg-slate-200"></div>
+                                    <div className="h-8 w-[1px]" style={{ backgroundColor: '#e2e8f0' }}></div>
                                     <div className="text-right">
-                                      <div className="text-[8px] font-bold text-orange-500 uppercase">آجل</div>
-                                      <div className="text-sm font-black font-mono text-orange-700">{m.credit?.toLocaleString()} ريال</div>
+                                      <div className="text-[8px] font-bold uppercase" style={{ color: '#f97316' }}>آجل</div>
+                                      <div className="text-sm font-black font-mono" style={{ color: '#c2410c' }}>{m.credit?.toLocaleString()} ريال</div>
                                     </div>
-                                    <div className="h-8 w-[1px] bg-slate-200"></div>
+                                    <div className="h-8 w-[1px]" style={{ backgroundColor: '#e2e8f0' }}></div>
                                     <div className="text-right">
-                                      <div className="text-[8px] font-bold text-slate-500 uppercase">الإجمالي</div>
-                                      <div className="text-sm font-black font-mono text-slate-900">{m.total?.toLocaleString()} ريال</div>
+                                      <div className="text-[8px] font-bold uppercase" style={{ color: '#64748b' }}>الإجمالي</div>
+                                      <div className="text-sm font-black font-mono" style={{ color: '#0f172a' }}>{m.total?.toLocaleString()} ريال</div>
                                     </div>
                                   </div>
                                 </div>
@@ -2262,8 +2352,8 @@ export default function App() {
 
                      {/* RAIA DETAILED TABLES */}
                      {raiaDetailed.length > 0 && (
-                       <div style={{ pageBreakBefore: 'always', paddingTop: '15mm' }}>
-                         <h2 className="text-2xl font-black mb-8 underline underline-offset-8">تفاصيل حسابات الرعية</h2>
+                       <div style={{ pageBreakBefore: 'always', paddingTop: '10mm' }}>
+                         <h2 className="text-2xl font-black mb-8 underline underline-offset-8">كشف حساب الرعية</h2>
                          <div className="space-y-14">
                            {raiaDetailed.map((r: any) => (
                              <div key={r.id} className="border-t-2 border-black pt-4">
@@ -2274,10 +2364,13 @@ export default function App() {
                                    const qatal = r.deliveries.filter((d: any) => (d.category || '').includes('قطل')).reduce((sum: number, d: any) => sum + (d.quantity || 0), 0);
                                    return (
                                      <div className="flex gap-4 items-center">
-                                       {roos > 0 && <span className="text-xs font-black bg-slate-100 px-3 py-1 rounded-lg">الروس: {roos}</span>}
-                                       {qatal > 0 && <span className="text-xs font-black bg-slate-100 px-3 py-1 rounded-lg">القطل: {qatal}</span>}
-                                       <div className="text-sm font-black flex items-center justify-center pt-0 pb-1.5 px-[2px] m-0" style={{ backgroundColor: '#000000', color: '#ffffff' }}>
-                                         إجمالي مبيعات الرعوي: {r.totalSalesVal.toLocaleString()} ريال
+                                       {roos > 0 && <span className="text-xs font-black px-3 py-1 rounded-lg" style={{ backgroundColor: '#f1f5f9' }}>الروس: {roos}</span>}
+                                       {qatal > 0 && <span className="text-xs font-black px-3 py-1 rounded-lg" style={{ backgroundColor: '#f1f5f9' }}>القطل: {qatal}</span>}
+                                       <div className="flex flex-col items-end">
+                                         <div className="text-sm font-black flex items-center justify-center pt-0 pb-1.5 px-[2px] m-0" style={{ backgroundColor: '#000000', color: '#ffffff' }}>
+                                         صافي الرعوي: {(r.totalSalesVal - r.deliveries.reduce((sum: number, d: any) => sum + d.sales.reduce((sSum: number, s: any) => sSum + (s.commission || 0), 0), 0)).toLocaleString()} ريال
+                                         </div>
+                                         <div className="text-[7px] font-bold" style={{ color: '#94a3b8' }}>إجمالي: {r.totalSalesVal.toLocaleString()} | عمولة: {r.deliveries.reduce((sum: number, d: any) => sum + d.sales.reduce((sSum: number, s: any) => sSum + (s.commission || 0), 0), 0).toLocaleString()}</div>
                                        </div>
                                      </div>
                                    );
@@ -2305,13 +2398,40 @@ export default function App() {
                                            const buyer = muqawatah.find(m => m.id === s.personId);
                                            return (
                                              <tr key={s.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                                               <td className="p-2 font-bold">{buyer?.name || 'مجهول'}</td>
+                                               <td className="p-2 font-bold">
+                                                 {s.isMoulai ? (
+                                                   <span className="text-orange-600 flex items-center gap-1">
+                                                     <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
+                                                     مبـيع مولـعي
+                                                   </span>
+                                                 ) : (
+                                                   buyer?.name || 'مجهول'
+                                                 )}
+                                               </td>
                                                <td className="p-2 font-mono">{s.quantity} {d.category}</td>
                                                <td className="p-2 font-mono">{s.unitPrice?.toLocaleString()} ريال</td>
-                                               <td className="p-2 font-black font-mono">{s.amount.toLocaleString()} ريال</td>
+                                               <td className="p-2 font-black font-mono">
+                                                  <div>{(s.amount - (s.commission || 0)).toLocaleString()} <span className="text-[8px] font-normal">صافي</span></div>
+                                                  <div className="text-[7px] font-normal" style={{ opacity: 0.5 }}>إجمالي: {s.amount.toLocaleString()} - ع: {s.commission?.toLocaleString()}</div>
+                                               </td>
                                              </tr>
                                            );
                                          })}
+                                         {(() => {
+                                           const sold = d.sales.reduce((sum: number, s: any) => sum + (s.quantity || 0), 0);
+                                           const remaining = (d.quantity || 0) - sold;
+                                           if (remaining > 0) {
+                                             return (
+                                               <tr style={{ backgroundColor: '#fffbeb' }}>
+                                                 <td className="p-2 font-black text-orange-600">لم يتم بيعها بعد</td>
+                                                 <td className="p-2 font-black font-mono text-orange-600">{remaining} {d.category}</td>
+                                                 <td className="p-2 text-slate-300">-</td>
+                                                 <td className="p-2 text-slate-300">-</td>
+                                               </tr>
+                                             );
+                                           }
+                                           return null;
+                                         })()}
                                        </tbody>
                                      </table>
                                    </div>

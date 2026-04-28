@@ -124,12 +124,13 @@
 .report-footer-print {
   width: 100%;
   text-align: right; /* Aligned to the right as requested */
-  font-size: 11px;
+  font-size: 10px;
   font-weight: bold;
-  padding-top: 5mm;
-  border-top: 2px solid #000000;
-  margin-top: 15mm;
+  padding-top: 3mm;
+  border-top: 1.5px solid #000000;
+  margin-top: 5mm;
   color: #000000;
+  page-break-inside: avoid;
 }
 
 .report-doc section {
